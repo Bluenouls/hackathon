@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FlyNav & Sense — 손상감내 항법 시뮬레이션</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0c2038;
+    --bg-panel: #10294a;
+    --bg-panel-deep: #0a1c33;
+    --line: #6fa8d6;
+    --line-dim: #345574;
+    --line-faint: #22405e;
+    --paper: #e9f1f8;
+    --paper-dim: #a9c1d6;
+    --amber: #e2a039;
+    --green: #58d495;
+    --red: #e8562f;
+    --grey-dot: #90a5b8;
+    --font-head: 'Barlow Condensed', 'Arial Narrow', sans-serif;
+    --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0c2038; --bg-panel: #10294a; --bg-panel-deep: #0a1c33;
+      --line: #6fa8d6; --line-dim: #345574; --line-faint: #22405e;
+      --paper: #e9f1f8; --paper-dim: #a9c1d6;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0c2038; --bg-panel: #10294a; --bg-panel-deep: #0a1c33;
+    --line: #6fa8d6; --line-dim: #345574; --line-faint: #22405e;
+    --paper: #e9f1f8; --paper-dim: #a9c1d6;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--paper);
+    font-family: var(--font-mono);
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    min-height: 100vh;
+    background-image:
+      linear-gradient(var(--line-faint) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line-faint) 1px, transparent 1px);
+    background-size: 28px 28px;
+    background-position: -1px -1px;
+    padding: clamp(12px, 3vw, 32px);
+  }
+
+  .sheet {
+    max-width: 1180px;
+    margin: 0 auto;
+    border: 1px solid var(--line-dim);
+    background: rgba(10, 28, 51, 0.55);
+  }
+
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 16px;
+    padding: 22px clamp(16px, 3vw, 32px) 16px;
+    border-bottom: 1px solid var(--line-dim);
+    flex-wrap: wrap;
+  }
+  header h1 {
+    font-family: var(--font-head);
+    font-weight: 700;
+    font-size: clamp(28px, 4.4vw, 42px);
+    letter-spacing: 0.01em;
+    margin: 0;
+    line-height: 1;
+    color: var(--paper);
+  }
+  header .kr {
+    font-family: var(--font-head);
+    font-weight: 500;
+    font-size: clamp(14px, 1.8vw, 17px);
+    color: var(--paper-dim);
+    margin-top: 6px;
+  }
+  header .meta {
+    font-size: 11.5px;
+    color: var(--paper-dim);
+    text-align: right;
+    line-height: 1.7;
+  }
+  header .meta b { color: var(--line); }
+
+  .intro {
+    padding: 16px clamp(16px, 3vw, 32px) 4px;
+    font-size: 13.5px;
+    line-height: 1.7;
+    color: var(--paper-dim);
+    max-width: 74ch;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 1.5fr 1fr;
+    gap: 1px;
+    background: var(--line-dim);
+    margin: 20px clamp(16px, 3vw, 32px) 0;
+    border: 1px solid var(--line-dim);
+  }
+  @media (max-width: 820px) {
+    .layout { grid-template-columns: 1fr; }
+  }
+
+  .plan-panel, .control-panel {
+    background: var(--bg-panel-deep);
+  }
+
+  .plan-panel { padding: 14px; }
+  .plan-head {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 11px; color: var(--paper-dim); letter-spacing: 0.04em;
+    margin-bottom: 8px;
+  }
+  .plan-head .dot-legend { display: flex; gap: 14px; font-size: 11px; }
+  .plan-head .dot-legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .swatch { width: 9px; height: 9px; display: inline-block; border-radius: 50%; }
+
+  svg#floor { width: 100%; height: auto; display: block; }
+
+  .control-panel { display: flex; flex-direction: column; }
+
+  .status-block {
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--line-dim);
+  }
+  .status-row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 10px;
+  }
+  .status-row:last-child { margin-bottom: 0; }
+  .status-label { font-size: 11px; color: var(--paper-dim); letter-spacing: 0.03em; }
+  .status-value { font-family: var(--font-head); font-size: 22px; font-weight: 600; color: var(--paper); }
+  .status-value.state-ok { color: var(--green); }
+  .status-value.state-warn { color: var(--amber); }
+  .status-value.state-crit { color: var(--red); }
+
+  .sensors-block { padding: 16px 18px; border-bottom: 1px solid var(--line-dim); }
+  .block-title {
+    font-size: 11px; letter-spacing: 0.04em; color: var(--paper-dim);
+    margin: 0 0 12px;
+  }
+  .sensor-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 9px 0;
+    border-top: 1px dashed var(--line-faint);
+  }
+  .sensor-row:first-of-type { border-top: none; }
+  .sensor-name { font-size: 13px; color: var(--paper); }
+  .sensor-name small { display: block; font-size: 10.5px; color: var(--paper-dim); margin-top: 2px; }
+
+  .switch {
+    position: relative; width: 42px; height: 22px;
+    background: var(--bg-panel); border: 1px solid var(--line-dim);
+    cursor: pointer; flex-shrink: 0;
+  }
+  .switch::after {
+    content: ""; position: absolute; top: 2px; left: 2px;
+    width: 16px; height: 16px; background: var(--red);
+    transition: left 0.18s ease, background 0.18s ease;
+  }
+  .switch.on { border-color: var(--green); }
+  .switch.on::after { left: 22px; background: var(--green); }
+  .switch:focus-visible { outline: 2px solid var(--line); outline-offset: 2px; }
+
+  .log-block { padding: 16px 18px; flex: 1; display: flex; flex-direction: column; min-height: 180px; }
+  .log-feed {
+    flex: 1; overflow-y: auto; font-size: 11.5px; line-height: 1.9;
+    color: var(--paper-dim); max-height: 220px;
+  }
+  .log-feed .entry { display: flex; gap: 8px; }
+  .log-feed .entry .t { color: var(--line-dim); flex-shrink: 0; }
+  .log-feed .entry.warn .m { color: var(--amber); }
+  .log-feed .entry.crit .m { color: var(--red); }
+  .log-feed .entry.ok .m { color: var(--green); }
+
+  .loaded-banner {
+    font-size: 11.5px; color: var(--amber);
+    background: rgba(226,160,57,0.1);
+    border: 1px solid var(--amber);
+    padding: 7px 10px; margin-bottom: 10px;
+  }
+
+  .share-block { padding: 14px 18px; border-top: 1px solid var(--line-dim); }
+  .share-row, .share-out-row {
+    display: flex; gap: 8px; margin-top: 8px;
+  }
+  .share-input {
+    flex: 1; min-width: 0;
+    font-family: var(--font-mono); font-size: 11.5px;
+    background: var(--bg-panel); color: var(--paper);
+    border: 1px solid var(--line-dim); padding: 8px 10px;
+  }
+  .share-input:focus-visible { outline: 2px solid var(--line); outline-offset: 1px; }
+  .share-input::placeholder { color: var(--paper-dim); }
+  .share-hint { font-size: 10.5px; color: var(--paper-dim); margin: 8px 0 0; line-height: 1.5; }
+
+  .run-row {
+    display: flex; gap: 10px; padding: 14px 18px;
+    border-top: 1px solid var(--line-dim);
+  }
+  button.run-btn {
+    font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.03em;
+    background: var(--bg-panel); color: var(--paper);
+    border: 1px solid var(--line); padding: 9px 16px;
+    cursor: pointer;
+  }
+  button.run-btn:hover { background: var(--line-dim); }
+  button.run-btn:focus-visible { outline: 2px solid var(--line); outline-offset: 2px; }
+
+  footer.titleblock {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    border-top: 1px solid var(--line-dim);
+    font-size: 11px;
+    margin: 24px 0 0;
+  }
+  footer.titleblock div {
+    padding: 10px clamp(16px, 3vw, 32px);
+    border-right: 1px solid var(--line-dim);
+    color: var(--paper-dim);
+  }
+  footer.titleblock div:last-child { border-right: none; }
+  footer.titleblock b { display: block; color: var(--paper); font-size: 12.5px; margin-bottom: 2px; }
+  @media (max-width: 620px) {
+    footer.titleblock { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <header>
+    <div>
+      <h1>FlyNav &amp; Sense</h1>
+      <div class="kr">초파리 손상감내 회로 기반 밀폐구역 항법 시뮬레이션</div>
+    </div>
+    <div class="meta">
+      DWG NO. FN–01 · SCALE N.T.S.<br>
+      SHEET 1 OF 1 · REV A
+    </div>
+  </header>
+
+  <p class="intro">
+    초파리는 시각·후각 감각기관 일부가 손상돼도 남은 감각 정보만으로 경로를 잃지 않습니다. 이 시뮬레이션은 GPS가 닿지 않는 선박 밀폐구역에서 센서 일부가 분진으로 가려지거나 고장 나도 항법 추정이 멈추지 않는 원리를 보여줍니다. 아래 스위치로 센서를 하나씩 꺼보세요.
+  </p>
+
+  <div class="layout">
+    <div class="plan-panel">
+      <div class="plan-head">
+        <span>구획 평면도 · COMPARTMENT PLAN</span>
+        <span class="dot-legend">
+          <span><i class="swatch" style="background:var(--grey-dot)"></i>실제 위치</span>
+          <span><i class="swatch" style="background:var(--green)"></i>추정 위치</span>
+        </span>
+      </div>
+      <svg id="floor" viewBox="0 0 800 520" xmlns="http://www.w3.org/2000/svg">
+        <!-- room fills -->
+        <g fill="var(--bg-panel)" opacity="0.5">
+          <rect x="30" y="30" width="220" height="300"></rect>
+          <rect x="290" y="120" width="220" height="300"></rect>
+          <rect x="550" y="30" width="220" height="180"></rect>
+          <rect x="550" y="250" width="220" height="240"></rect>
+        </g>
+        <!-- walls -->
+        <g stroke="var(--line)" stroke-width="2" fill="none">
+          <rect x="30" y="30" width="220" height="300"></rect>
+          <rect x="290" y="120" width="220" height="300"></rect>
+          <rect x="550" y="30" width="220" height="180"></rect>
+          <rect x="550" y="250" width="220" height="240"></rect>
+        </g>
+        <!-- doorway openings: rectangular cut-outs erase wall strokes cleanly -->
+        <g fill="var(--bg)">
+          <rect x="246" y="266" width="48" height="48"></rect>
+          <rect x="466" y="172" width="88" height="42"></rect>
+          <rect x="466" y="328" width="88" height="44"></rect>
+        </g>
+        <!-- bulkhead hatch marks -->
+        <g stroke="var(--line-dim)" stroke-width="1">
+          <line x1="30" y1="30" x2="10" y2="10"></line>
+          <line x1="250" y1="30" x2="270" y2="10"></line>
+          <line x1="30" y1="330" x2="10" y2="350"></line>
+          <line x1="770" y1="30" x2="790" y2="10"></line>
+          <line x1="770" y1="490" x2="790" y2="510"></line>
+        </g>
+        <!-- grid tick labels -->
+        <g fill="var(--paper-dim)" font-size="10" font-family="var(--font-mono)">
+          <text x="34" y="24">A-1 탱크구역</text>
+          <text x="294" y="114">A-2 통로</text>
+          <text x="554" y="24">A-3 격납고</text>
+          <text x="554" y="244">A-4 펌프실</text>
+        </g>
+        <!-- compass rose -->
+        <g transform="translate(730,470)" stroke="var(--line-dim)" fill="none">
+          <circle r="22" stroke-width="1"></circle>
+          <line x1="0" y1="-22" x2="0" y2="22" stroke-width="1"></line>
+          <line x1="-22" y1="0" x2="22" y2="0" stroke-width="1"></line>
+          <text x="-3" y="-26" fill="var(--paper-dim)" font-size="10" stroke="none">N</text>
+        </g>
+        <!-- path trail -->
+        <polyline id="trueTrail" fill="none" stroke="var(--grey-dot)" stroke-width="1.3" stroke-dasharray="2 4" opacity="0.55"></polyline>
+        <!-- confidence ring -->
+        <circle id="confRing" r="14" fill="var(--green)" opacity="0.14"></circle>
+        <!-- true position dot -->
+        <circle id="trueDot" r="4" fill="var(--grey-dot)"></circle>
+        <!-- estimated position dot -->
+        <circle id="estDot" r="6" fill="var(--green)" stroke="var(--bg)" stroke-width="1.5"></circle>
+      </svg>
+    </div>
+
+    <div class="control-panel">
+      <div class="status-block">
+        <div class="status-row">
+          <span class="status-label">항법 상태 · STATE</span>
+          <span class="status-value" id="stateText">정상 항법</span>
+        </div>
+        <div class="status-row">
+          <span class="status-label">위치 신뢰도 · CONFIDENCE</span>
+          <span class="status-value" id="confText">96%</span>
+        </div>
+        <div class="status-row">
+          <span class="status-label">활성 센서 · ACTIVE</span>
+          <span class="status-value" id="activeText">3 / 3</span>
+        </div>
+      </div>
+
+      <div class="sensors-block">
+        <p class="block-title">센서 제어 · SENSOR FAULT INJECTION</p>
+        <div class="sensor-row">
+          <span class="sensor-name">관성센서 (IMU)<small>보행 스텝 · 헤딩 추정</small></span>
+          <div class="switch on" data-sensor="imu" role="switch" aria-checked="true" tabindex="0"></div>
+        </div>
+        <div class="sensor-row">
+          <span class="sensor-name">근접 비콘 (BLE)<small>구획별 저주파 위치 보정</small></span>
+          <div class="switch on" data-sensor="ble" role="switch" aria-checked="true" tabindex="0"></div>
+        </div>
+        <div class="sensor-row">
+          <span class="sensor-name">광학 카메라<small>분진에 가장 취약</small></span>
+          <div class="switch on" data-sensor="cam" role="switch" aria-checked="true" tabindex="0"></div>
+        </div>
+      </div>
+
+      <div class="log-block">
+        <p class="block-title">이벤트 로그 · LOG</p>
+        <div id="loadedBanner" class="loaded-banner" hidden></div>
+        <div class="log-feed" id="logFeed"></div>
+      </div>
+
+      <div class="share-block">
+        <p class="block-title">기록 저장 &amp; 공유 · SAVE &amp; SHARE</p>
+        <div class="share-row">
+          <input type="text" id="shareLabel" class="share-input" placeholder="기록 이름 (예: 카메라 손실 시나리오)" maxlength="40">
+          <button class="run-btn" id="shareBtn">공유 링크 생성</button>
+        </div>
+        <div class="share-out-row" id="shareOutRow" hidden>
+          <input type="text" id="shareOut" class="share-input" readonly>
+          <button class="run-btn" id="copyBtn">복사</button>
+        </div>
+        <p class="share-hint">계정 없이 링크만 열어도 이 시점의 센서 상태와 로그가 그대로 보입니다.</p>
+      </div>
+
+      <div class="run-row">
+        <button class="run-btn" id="playBtn">일시정지</button>
+        <button class="run-btn" id="resetBtn">초기화</button>
+      </div>
+    </div>
+  </div>
+
+  <footer class="titleblock">
+    <div><b>PROJECT</b>FlyNav &amp; Sense</div>
+    <div><b>CONCEPT</b>손상감내 다중센서 융합 항법</div>
+    <div><b>TARGET AX</b>안전 (Safety)</div>
+    <div><b>DEMO</b>합성 시뮬레이션 데이터</div>
+  </footer>
+
+</div>
+
+<script>
+(function () {
+  var waypoints = [
+    [70, 300], [70, 60], [230, 60], [230, 300],
+    [310, 300], [310, 150], [470, 190],
+    [590, 190], [730, 60], [730, 190], [470, 190],
+    [400, 300], [470, 350],
+    [590, 350], [730, 270], [730, 460], [590, 460], [590, 350]
+  ];
+
+  var segLens = [];
+  var totalLen = 0;
+  for (var i = 0; i < waypoints.length - 1; i++) {
+    var dx = waypoints[i+1][0] - waypoints[i][0];
+    var dy = waypoints[i+1][1] - waypoints[i][1];
+    var l = Math.sqrt(dx*dx + dy*dy);
+    segLens.push(l);
+    totalLen += l;
+  }
+
+  var t = 0;
+  var dir = 1;
+  var speed = 55; // px per second
+  var running = true;
+  var lastTime = null;
+
+  var sensors = { imu: true, ble: true, cam: true };
+  var estX = waypoints[0][0], estY = waypoints[0][1];
+  var noiseTargetX = 0, noiseTargetY = 0, noiseCurX = 0, noiseCurY = 0;
+  var noiseTimer = 0;
+  var frozenSince = null;
+  var trailPts = [];
+
+  var trueDot = document.getElementById('trueDot');
+  var estDot = document.getElementById('estDot');
+  var confRing = document.getElementById('confRing');
+  var trueTrail = document.getElementById('trueTrail');
+  var stateText = document.getElementById('stateText');
+  var confText = document.getElementById('confText');
+  var activeText = document.getElementById('activeText');
+  var logFeed = document.getElementById('logFeed');
+
+  function pointAt(dist) {
+    var d = dist;
+    for (var i = 0; i < segLens.length; i++) {
+      if (d <= segLens[i] || i === segLens.length - 1) {
+        var frac = segLens[i] === 0 ? 0 : d / segLens[i];
+        frac = Math.min(1, Math.max(0, frac));
+        var x = waypoints[i][0] + (waypoints[i+1][0] - waypoints[i][0]) * frac;
+        var y = waypoints[i][1] + (waypoints[i+1][1] - waypoints[i][1]) * frac;
+        return [x, y];
+      }
+      d -= segLens[i];
+    }
+    return waypoints[waypoints.length - 1];
+  }
+
+  function activeCount() {
+    return (sensors.imu ? 1 : 0) + (sensors.ble ? 1 : 0) + (sensors.cam ? 1 : 0);
+  }
+
+  function fmtTime() {
+    var now = new Date();
+    return now.toTimeString().slice(0, 8);
+  }
+
+  var logHistory = [];
+
+  function renderLogEntry(time, msg, level) {
+    var entry = document.createElement('div');
+    entry.className = 'entry' + (level ? ' ' + level : '');
+    entry.innerHTML = '<span class="t">' + time + '</span><span class="m"></span>';
+    entry.querySelector('.m').textContent = msg;
+    logFeed.insertBefore(entry, logFeed.firstChild);
+    while (logFeed.children.length > 40) logFeed.removeChild(logFeed.lastChild);
+  }
+
+  function log(msg, level) {
+    var time = fmtTime();
+    logHistory.unshift({ time: time, msg: msg, level: level || '' });
+    if (logHistory.length > 40) logHistory.pop();
+    renderLogEntry(time, msg, level);
+  }
+
+  function updateStatus(n) {
+    activeText.textContent = n + ' / 3';
+    var conf, state, cls;
+    if (n === 3) { conf = 94 + Math.round(Math.random()*4); state = '정상 항법'; cls='state-ok'; }
+    else if (n === 2) { conf = 74 + Math.round(Math.random()*8); state = '저하된 항법'; cls='state-warn'; }
+    else if (n === 1) { conf = 50 + Math.round(Math.random()*10); state = '저하된 항법'; cls='state-warn'; }
+    else {
+      var frozenSec = frozenSince ? (Date.now() - frozenSince) / 1000 : 0;
+      conf = Math.max(12, Math.round(45 - frozenSec * 2));
+      state = '최후 위치 고정'; cls='state-crit';
+    }
+    confText.textContent = conf + '%';
+    stateText.textContent = state;
+    stateText.className = 'status-value ' + cls;
+    return conf;
+  }
+
+  function toggleSensor(key) {
+    sensors[key] = !sensors[key];
+    var el = document.querySelector('.switch[data-sensor="' + key + '"]');
+    el.classList.toggle('on', sensors[key]);
+    el.setAttribute('aria-checked', sensors[key]);
+    var names = { imu: '관성센서(IMU)', ble: '근접 비콘(BLE)', cam: '광학 카메라' };
+    var n = activeCount();
+    if (!sensors[key]) {
+      log(names[key] + ' 신호 상실 — 잔여 ' + n + '개 센서로 재계산', n <= 1 ? 'crit' : 'warn');
+    } else {
+      log(names[key] + ' 신호 복구 — 위치 재동기화', 'ok');
+    }
+    if (n > 0) frozenSince = null;
+    if (n === 0) frozenSince = Date.now();
+  }
+
+  document.querySelectorAll('.switch').forEach(function (el) {
+    el.addEventListener('click', function () { toggleSensor(el.getAttribute('data-sensor')); });
+    el.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleSensor(el.getAttribute('data-sensor')); }
+    });
+  });
+
+  document.getElementById('playBtn').addEventListener('click', function () {
+    running = !running;
+    this.textContent = running ? '일시정지' : '재생';
+    lastTime = null;
+  });
+
+  document.getElementById('resetBtn').addEventListener('click', function () {
+    t = 0; dir = 1; trailPts = [];
+    sensors = { imu: true, ble: true, cam: true };
+    document.querySelectorAll('.switch').forEach(function (el) {
+      el.classList.add('on'); el.setAttribute('aria-checked', 'true');
+    });
+    frozenSince = null;
+    var p = pointAt(0);
+    estX = p[0]; estY = p[1];
+    logFeed.innerHTML = '';
+    logHistory = [];
+    hideLoadedBanner();
+    log('시뮬레이션 초기화 — 전 센서 정상', 'ok');
+  });
+
+  function frame(now) {
+    if (lastTime === null) lastTime = now;
+    var dt = (now - lastTime) / 1000;
+    lastTime = now;
+
+    if (running) {
+      t += dir * speed * dt;
+      if (t >= totalLen) { t = totalLen; dir = -1; }
+      if (t <= 0) { t = 0; dir = 1; }
+    }
+
+    var truePos = pointAt(t);
+
+    trailPts.push(truePos[0].toFixed(1) + ',' + truePos[1].toFixed(1));
+    if (trailPts.length > 90) trailPts.shift();
+    trueTrail.setAttribute('points', trailPts.join(' '));
+
+    var n = activeCount();
+    noiseTimer -= dt;
+    if (noiseTimer <= 0) {
+      var mag = (4 - Math.max(n,1)) * 7;
+      noiseTargetX = (Math.random() - 0.5) * mag;
+      noiseTargetY = (Math.random() - 0.5) * mag;
+      noiseTimer = 0.5 + Math.random() * 0.4;
+    }
+    noiseCurX += (noiseTargetX - noiseCurX) * 0.06;
+    noiseCurY += (noiseTargetY - noiseCurY) * 0.06;
+
+    if (n > 0) {
+      estX += ((truePos[0] + noiseCurX) - estX) * 0.09;
+      estY += ((truePos[1] + noiseCurY) - estY) * 0.09;
+    }
+    // if n === 0, estX/estY stay frozen
+
+    trueDot.setAttribute('cx', truePos[0]);
+    trueDot.setAttribute('cy', truePos[1]);
+    estDot.setAttribute('cx', estX);
+    estDot.setAttribute('cy', estY);
+
+    var conf = updateStatus(n);
+    var ringR = n === 3 ? 12 : n === 2 ? 22 : n === 1 ? 34 : Math.min(70, 40 + (frozenSince ? (Date.now()-frozenSince)/300 : 0));
+    confRing.setAttribute('r', ringR);
+    confRing.setAttribute('cx', estX);
+    confRing.setAttribute('cy', estY);
+    var ringColor = n >= 2 ? 'var(--green)' : n === 1 ? 'var(--amber)' : 'var(--red)';
+    confRing.setAttribute('fill', ringColor);
+    estDot.setAttribute('fill', ringColor);
+
+    requestAnimationFrame(frame);
+  }
+
+  // ---- shared save / load via URL (no account needed — the link itself carries the state) ----
+  var loadedBanner = document.getElementById('loadedBanner');
+
+  function hideLoadedBanner() { loadedBanner.hidden = true; loadedBanner.textContent = ''; }
+
+  function utf8ToB64(str) {
+    return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, function (_, p1) {
+      return String.fromCharCode('0x' + p1);
+    }));
+  }
+  function b64ToUtf8(str) {
+    return decodeURIComponent(atob(str).split('').map(function (c) {
+      return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+    }).join(''));
+  }
+
+  function buildShareUrl(label) {
+    var state = {
+      label: label || '(제목 없음)',
+      savedAt: fmtTime(),
+      sensors: sensors,
+      log: logHistory.slice(0, 15)
+    };
+    var encoded;
+    try {
+      encoded = utf8ToB64(JSON.stringify(state));
+    } catch (e) {
+      return null;
+    }
+    var url = new URL(window.location.href);
+    url.hash = 'state=' + encoded;
+    return url.toString();
+  }
+
+  function applyLoadedState(state) {
+    running = false;
+    document.getElementById('playBtn').textContent = '재생';
+    sensors = { imu: !!state.sensors.imu, ble: !!state.sensors.ble, cam: !!state.sensors.cam };
+    document.querySelectorAll('.switch').forEach(function (el) {
+      var key = el.getAttribute('data-sensor');
+      el.classList.toggle('on', sensors[key]);
+      el.setAttribute('aria-checked', sensors[key]);
+    });
+    logFeed.innerHTML = '';
+    logHistory = [];
+    (state.log || []).slice().reverse().forEach(function (e) {
+      logHistory.unshift(e);
+      renderLogEntry(e.time, e.msg, e.level);
+    });
+    loadedBanner.hidden = false;
+    loadedBanner.textContent = '공유된 기록 · "' + state.label + '" · 저장 시각 ' + state.savedAt + ' — 재생을 누르면 이 상태에서 다시 움직입니다';
+  }
+
+  document.getElementById('shareBtn').addEventListener('click', function () {
+    var label = document.getElementById('shareLabel').value.trim();
+    var url = buildShareUrl(label);
+    var outRow = document.getElementById('shareOutRow');
+    var out = document.getElementById('shareOut');
+    if (!url) {
+      out.value = '링크 생성 실패 — 다시 시도해주세요';
+      outRow.hidden = false;
+      return;
+    }
+    out.value = url;
+    outRow.hidden = false;
+    log('공유 링크 생성됨 (' + (label || '제목 없음') + ')', 'ok');
+  });
+
+  document.getElementById('copyBtn').addEventListener('click', function () {
+    var out = document.getElementById('shareOut');
+    out.select();
+    var btn = this;
+    navigator.clipboard && navigator.clipboard.writeText(out.value).then(function () {
+      btn.textContent = '복사됨';
+      setTimeout(function () { btn.textContent = '복사'; }, 1500);
+    }).catch(function () {
+      try { document.execCommand('copy'); btn.textContent = '복사됨'; setTimeout(function () { btn.textContent = '복사'; }, 1500); }
+      catch (e) { /* clipboard unavailable — text is still selected for manual copy */ }
+    });
+  });
+
+  // ---- init: load shared state from URL hash if present, else start fresh ----
+  var initialized = false;
+  if (window.location.hash && window.location.hash.indexOf('state=') === 0) {
+    try {
+      var parsed = JSON.parse(b64ToUtf8(window.location.hash.slice('#state='.length)));
+      var p0 = pointAt(0);
+      estX = p0[0]; estY = p0[1];
+      applyLoadedState(parsed);
+      initialized = true;
+    } catch (e) {
+      initialized = false;
+    }
+  }
+  if (!initialized) {
+    var p0b = pointAt(0);
+    estX = p0b[0]; estY = p0b[1];
+    log('시뮬레이션 시작 — 전 센서 정상', 'ok');
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
